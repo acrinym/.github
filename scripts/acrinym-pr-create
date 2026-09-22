@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: acrinym-pr-create [gh pr create arguments...]
+
+Creates a pull request with GitHub CLI, then applies the acrinym account-level
+post-PR review policy only after the PR exists.
+
+Public repo:
+  OpenHands and CodeRabbit may run through normal GitHub integrations.
+
+Non-public repo:
+  Automatically posts:
+  @openhands, please review PR.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  echo
+  gh pr create --help
+  exit 0
+fi
+
+command -v gh >/dev/null || { echo "gh is required" >&2; exit 2; }
+command -v acrinym-pr-review >/dev/null || { echo "acrinym-pr-review is required" >&2; exit 2; }
+
+REPO=""
+ARGS=("$@")
+for ((i=0; i<${#ARGS[@]}; i++)); do
+  case "${ARGS[$i]}" in
+    -R|--repo)
+      if (( i + 1 < ${#ARGS[@]} )); then
+        REPO="${ARGS[$((i+1))]}"
+      fi
+      ;;
+    --repo=*)
+      REPO="${ARGS[$i]#--repo=}"
+      ;;
+  esac
+done
+
+if [[ -z "$REPO" ]]; then
+  REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+fi
+
+CREATE_OUTPUT="$(gh pr create "$@")"
+printf '%s\n' "$CREATE_OUTPUT"
+
+PR_URL="$(printf '%s\n' "$CREATE_OUTPUT" | grep -Eo 'https://github\.com/[^[:space:]]+/pull/[0-9]+' | tail -n 1)"
+if [[ -z "$PR_URL" ]]; then
+  echo "PR was created, but its URL could not be resolved from gh output." >&2
+  exit 3
+fi
+
+PR_NUMBER="${PR_URL##*/}"
+acrinym-pr-review --repo "$REPO" --pr "$PR_NUMBER"
+
+echo "Post-PR review policy applied to $REPO PR #$PR_NUMBER"
