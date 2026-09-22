@@ -65,7 +65,7 @@ fi
 if [[ -z "$PR" ]]; then
   PR="$(gh pr list --repo "$REPO" --state open --limit 200 \
     --json number,headRefOid \
-    --jq ".[] | select(.headRefOid == \\"$SHA\\") | .number" | head -n 1)"
+    --jq ".[] | select(.headRefOid == \"$SHA\") | .number" | head -n 1)"
 fi
 
 if [[ -z "$PR" ]]; then
