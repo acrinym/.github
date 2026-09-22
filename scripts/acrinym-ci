@@ -63,9 +63,8 @@ if [[ "$REMOTE_SHA" != "$SHA" ]]; then
 fi
 
 if [[ -z "$PR" ]]; then
-  PR="$(gh pr list --repo "$REPO" --state open --limit 200 \
-    --json number,headRefOid \
-    --jq ".[] | select(.headRefOid == \"$SHA\") | .number" | head -n 1)"
+  PR="$(gh pr list --repo "$REPO" --state open --limit 200 --json number,headRefOid |
+    python3 -c 'import json,sys; sha=sys.argv[1]; rows=json.load(sys.stdin); print(next((str(r["number"]) for r in rows if r.get("headRefOid")==sha), ""))' "$SHA")"
 fi
 
 if [[ -z "$PR" ]]; then
