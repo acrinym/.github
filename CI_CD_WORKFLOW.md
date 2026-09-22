@@ -49,11 +49,11 @@ GUI tests that require a display must run under an appropriate local virtual dis
 
 Capture the exact HEAD before and after, dirty-state stability, executed commands, pass/fail status, required failures, optional failures, environment blockers, and qualification level/decision when provided.
 
-### 5. Post one PR receipt
+### 5. Capture qualification evidence
 
-When the target has a matching pull request, CI/CD posts a GitHub PR comment containing the final qualification result.
+Keep the final qualification result available long enough to construct the PR receipt after cleanup.
 
-The receipt must identify the exact qualified SHA, summarize the material command results, and include a cleanup receipt.
+The final receipt must identify the exact qualified SHA, summarize the material command results, and include a verified cleanup receipt.
 
 Suggested shape:
 
@@ -79,9 +79,9 @@ Cleanup receipt:
 
 Do not represent GitHub Actions, CodeRabbit, Devin, Copilot, or another checker as this local CI/CD result.
 
-### 6. Clean run-scoped artifacts
+### 6. Clean and verify run-scoped artifacts
 
-After final qualification evidence has been captured and the PR receipt has been posted, remove run-scoped material created by CI/CD, including as applicable:
+After final qualification evidence has been captured, remove run-scoped material created by CI/CD, including as applicable:
 
 - disposable clones/staging directories
 - run-scoped virtual environments
@@ -97,7 +97,13 @@ Do not delete reusable user-level toolchains or intentional shared caches unless
 
 Verify cleanup after deletion.
 
-### 7. Stop
+### 7. Post one final PR receipt
+
+After cleanup has been verified, post exactly one final CI/CD receipt to the matching PR using the captured qualification evidence plus the verified cleanup result.
+
+Do not leave a local receipt artifact solely for provenance; the PR comment is the durable receipt.
+
+### 8. Stop
 
 **The local CI/CD workflow ends here.**
 
