@@ -31,3 +31,12 @@ A local CI/CD run:
 6. **ends**.
 
 It does not automatically merge, deploy, or continue into another development stage.
+
+
+## User-level commands
+
+- `acrinym-ci`: run the local WSL CI/CD contract, post the PR receipt, clean run artifacts, then end.
+- `acrinym-pr-create`: create a pull request and then automatically apply the account-level reviewer policy.
+- `acrinym-pr-review`: apply the reviewer policy to an existing pull request.
+
+Use `acrinym-pr-create` instead of raw `gh pr create` when the automatic post-PR reviewer behavior is required.
