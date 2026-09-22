@@ -106,12 +106,12 @@ post_receipt_and_exit() {
   [[ "$exit_code" -eq 0 ]] && outcome="QUALIFIED"
 
   {
-    printf 'Local WSL CI/CD qualification receipt for \`%s\`\n\n' "$SHA"
-    printf -- '- Repository: \`%s\`\n' "$REPO"
+    printf 'Local WSL CI/CD qualification receipt for `%s`\n\n' "$SHA"
+    printf -- '- Repository: `%s`\n' "$REPO"
     printf -- '- PR: #%s\n' "$PR"
-    printf -- '- Environment: \`Acrinym-Dev\` WSL2\n'
+    printf -- '- Environment: `Acrinym-Dev` WSL2\n'
     printf -- '- Result: **%s**\n' "$outcome"
-    printf -- '- Final phase: \`%s\`\n\n' "$PHASE"
+    printf -- '- Final phase: `%s`\n\n' "$PHASE"
 
     if [[ -n "$QUAL_TEXT" ]]; then
       printf '<details>\n<summary>HTE-Code Depth 5 qualification</summary>\n\n'
