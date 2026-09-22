@@ -148,3 +148,15 @@ Environment/infrastructure failures must not be mislabeled as product failures.
 ## Precedence
 
 A repository may contain an explicit repo-specific override when its architecture requires one. Otherwise this account-level workflow is the default CI/CD and post-PR review contract for repositories owned by `acrinym`.
+
+
+## User-level PR creation command
+
+Use `acrinym-pr-create` as the normal user-level PR creation path.
+
+It wraps `gh pr create`, waits until GitHub has created the pull request, then applies the post-PR review policy:
+
+- public repository: allow normal OpenHands + CodeRabbit GitHub integration behavior;
+- non-public repository: automatically post `@openhands, please review PR.`.
+
+This post-PR reviewer workflow remains separate from local WSL CI/CD. CI/CD still ends immediately after its own PR receipt and cleanup verification.
