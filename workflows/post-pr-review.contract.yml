@@ -21,3 +21,11 @@ merge:
 relationship_to_ci_cd:
   separate_workflow: true
   local_ci_cd_does_not_continue_into_review: true
+
+implementation:
+  creation_command: acrinym-pr-create
+  review_command: acrinym-pr-review
+  order:
+    - create_pull_request
+    - resolve_created_pr_number
+    - apply_visibility_based_review_policy
