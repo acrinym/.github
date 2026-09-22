@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: acrinym-ci [SOURCE_REPO_PATH] [--repo owner/name] [--pr NUMBER] [--sha SHA]
+
+Runs the acrinym account-level CI/CD contract locally in WSL.
+Requires an existing matching PR. Qualifies the exact pushed SHA in a
+disposable Linux-native clone, cleans run-scoped artifacts, posts one
+qualification + cleanup receipt to the PR, then exits.
+EOF
+}
+
+SOURCE=""
+REPO=""
+PR=""
+SHA=""
+
+while (($#)); do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --repo) REPO="${2:-}"; shift 2 ;;
+    --pr) PR="${2:-}"; shift 2 ;;
+    --sha) SHA="${2:-}"; shift 2 ;;
+    --*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *) if [[ -z "$SOURCE" ]]; then SOURCE="$1"; shift; else echo "Unexpected argument: $1" >&2; exit 2; fi ;;
+  esac
+done
+
+SOURCE="${SOURCE:-$PWD}"
+if [[ -f "$HOME/.config/acrinym/toolchain.sh" ]]; then
+  . "$HOME/.config/acrinym/toolchain.sh"
+fi
+
+command -v gh >/dev/null || { echo "gh is required" >&2; exit 2; }
+command -v git >/dev/null || { echo "git is required" >&2; exit 2; }
+command -v hte-ci >/dev/null || { echo "hte-ci is required" >&2; exit 2; }
+
+if [[ -z "$REPO" ]]; then
+  REMOTE="$(git -C "$SOURCE" remote get-url origin 2>/dev/null)" || {
+    echo "Cannot resolve origin from $SOURCE" >&2
+    exit 2
+  }
+  REPO="$(gh repo view "$REMOTE" --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" || {
+    echo "Cannot resolve GitHub repository from origin: $REMOTE" >&2
+    exit 2
+  }
+fi
+
+BRANCH="$(git -C "$SOURCE" branch --show-current 2>/dev/null || true)"
+if [[ -z "$SHA" ]]; then
+  SHA="$(git -C "$SOURCE" rev-parse HEAD 2>/dev/null)" || {
+    echo "Cannot resolve HEAD from $SOURCE" >&2
+    exit 2
+  }
+fi
+
+REMOTE_SHA="$(gh api "repos/$REPO/commits/$SHA" --jq .sha 2>/dev/null || true)"
+if [[ "$REMOTE_SHA" != "$SHA" ]]; then
+  echo "Exact SHA is not available on GitHub: $SHA" >&2
+  exit 2
+fi
+
+if [[ -z "$PR" ]]; then
+  PR="$(gh pr list --repo "$REPO" --state open --limit 200 \
+    --json number,headRefOid \
+    --jq ".[] | select(.headRefOid == \\"$SHA\\") | .number" | head -n 1)"
+fi
+
+if [[ -z "$PR" ]]; then
+  echo "No open PR found whose head is exactly $SHA" >&2
+  echo "CI/CD requires an existing matching PR because the final receipt is posted there." >&2
+  exit 2
+fi
+
+RUN_ROOT="$(mktemp -d "$HOME/ci-smoke/acrinym-ci-XXXXXX")"
+CLONE="$RUN_ROOT/repo"
+OUT="$RUN_ROOT/hte"
+QUAL_TEXT=""
+PHASE="staging"
+RUN_RC=1
+
+cleanup_run_root() {
+  python3 - "$RUN_ROOT" <<'PY'
+from pathlib import Path
+import shutil, sys
+p = Path(sys.argv[1])
+if p.exists():
+    shutil.rmtree(p)
+PY
+}
+
+post_receipt_and_exit() {
+  local exit_code="$1"
+  local staging_removed="no"
+
+  if [[ -f "$OUT/qualification.md" ]]; then
+    QUAL_TEXT="$(sed -n '1,240p' "$OUT/qualification.md")"
+  fi
+
+  cleanup_run_root || true
+  [[ ! -e "$RUN_ROOT" ]] && staging_removed="yes"
+
+  local outcome="FAILED"
+  [[ "$exit_code" -eq 0 ]] && outcome="QUALIFIED"
+
+  {
+    printf 'Local WSL CI/CD qualification receipt for \`%s\`\n\n' "$SHA"
+    printf -- '- Repository: \`%s\`\n' "$REPO"
+    printf -- '- PR: #%s\n' "$PR"
+    printf -- '- Environment: \`Acrinym-Dev\` WSL2\n'
+    printf -- '- Result: **%s**\n' "$outcome"
+    printf -- '- Final phase: \`%s\`\n\n' "$PHASE"
+
+    if [[ -n "$QUAL_TEXT" ]]; then
+      printf '<details>\n<summary>HTE-Code Depth 5 qualification</summary>\n\n'
+      printf '%s\n' "$QUAL_TEXT"
+      printf '\n</details>\n\n'
+    else
+      printf 'HTE qualification report was not produced.\n\n'
+    fi
+
+    printf 'Cleanup receipt:\n'
+    printf -- '- disposable Linux-native staging removed: %s\n' "$staging_removed"
+    printf -- '- run-scoped dependency environment removed with staging: %s\n' "$staging_removed"
+    printf -- '- qualification output/artifacts removed with staging: %s\n' "$staging_removed"
+    printf -- '- run-specific temporary files/logs removed with staging: %s\n' "$staging_removed"
+    printf -- '- original source checkout modified by CI/CD: no\n\n'
+    printf 'CI/CD execution location: local WSL. GitHub-hosted Actions are not the authoritative CI/CD runner for this receipt.\n\n'
+    printf '**CI/CD ends after this receipt.** PR review, repair, merge, deployment, or other orchestration are separate workflows.\n'
+  } | gh pr comment "$PR" --repo "$REPO" --body-file - >/dev/null
+
+  echo "PR #$PR receipt posted for $SHA"
+  echo "Cleanup verified: staging_removed=$staging_removed"
+  echo "CI/CD END"
+  exit "$exit_code"
+}
+
+fail_phase() {
+  echo "CI/CD failure during $PHASE: $*" >&2
+  post_receipt_and_exit 1
+}
+
+PHASE="clone"
+gh repo clone "$REPO" "$CLONE" -- --quiet || fail_phase "GitHub clone failed"
+cd "$CLONE" || fail_phase "Cannot enter disposable clone"
+git fetch --quiet origin "$SHA" || fail_phase "Cannot fetch exact SHA"
+if [[ -n "$BRANCH" ]]; then
+  git checkout -q -B "$BRANCH" "$SHA" || fail_phase "Cannot check out exact SHA"
+else
+  git checkout -q --detach "$SHA" || fail_phase "Cannot check out exact SHA"
+fi
+[[ "$(git rev-parse HEAD)" == "$SHA" ]] || fail_phase "Staged HEAD mismatch"
+[[ -z "$(git status --porcelain=v1)" ]] || fail_phase "Disposable clone is dirty before qualification"
+
+PHASE="provision"
+if [[ -f requirements.txt || -f tests/requirements.txt || -f pyproject.toml || -d tests ]]; then
+  command -v uv >/dev/null || fail_phase "Python surface detected but uv is unavailable"
+
+  PYTHON_SELECTOR=()
+  if [[ -f .python-version ]]; then
+    PYVER="$(head -n 1 .python-version | tr -d '[:space:]')"
+    [[ -n "$PYVER" ]] && PYTHON_SELECTOR=(--python "$PYVER")
+  fi
+
+  uv venv .ci-venv "${PYTHON_SELECTOR[@]}" >/dev/null || fail_phase "Could not create run-scoped Python environment"
+  . .ci-venv/bin/activate
+  export PATH="$CLONE/.ci-venv/bin:$PATH"
+
+  PIP_ARGS=()
+  [[ -f requirements.txt ]] && PIP_ARGS+=(-r requirements.txt)
+  [[ -f tests/requirements.txt ]] && PIP_ARGS+=(-r tests/requirements.txt)
+
+  if ((${#PIP_ARGS[@]})); then
+    uv pip install "${PIP_ARGS[@]}" pytest || fail_phase "Declared Python dependencies failed to install"
+  elif [[ -f pyproject.toml ]]; then
+    uv pip install -e . pytest || fail_phase "Python project dependencies failed to install"
+  elif [[ -d tests ]]; then
+    uv pip install pytest || fail_phase "pytest provisioning failed"
+  fi
+fi
+
+if [[ -f package-lock.json ]]; then
+  command -v npm >/dev/null || fail_phase "package-lock.json present but npm is unavailable"
+  npm ci || fail_phase "npm ci failed"
+elif [[ -f pnpm-lock.yaml ]]; then
+  command -v pnpm >/dev/null || fail_phase "pnpm-lock.yaml present but pnpm is unavailable"
+  pnpm install --frozen-lockfile || fail_phase "pnpm install failed"
+elif [[ -f yarn.lock ]]; then
+  command -v yarn >/dev/null || fail_phase "yarn.lock present but yarn is unavailable"
+  yarn install --frozen-lockfile || fail_phase "yarn install failed"
+fi
+
+PHASE="qualify"
+mkdir -p "$OUT"
+set +e
+if command -v xvfb-run >/dev/null 2>&1; then
+  xvfb-run -a -s "-screen 0 1280x1024x24" \
+    hte-ci run . --depth 5 --execute --task-class QUALIFY --out "$OUT"
+  RUN_RC=$?
+else
+  hte-ci run . --depth 5 --execute --task-class QUALIFY --out "$OUT"
+  RUN_RC=$?
+fi
+set -e
+
+PHASE="cleanup-and-receipt"
+post_receipt_and_exit "$RUN_RC"
