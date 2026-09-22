@@ -24,9 +24,10 @@ Review does not authorize merge. Merge remains a separate explicit action.
 A local CI/CD run:
 
 1. qualifies the exact repository head locally in WSL,
-2. posts the qualification and cleanup receipt into the matching GitHub pull request,
+2. captures the qualification evidence,
 3. cleans its run-scoped artifacts and temporary files,
 4. verifies cleanup,
-5. **ends**.
+5. posts one final qualification + cleanup receipt into the matching GitHub pull request,
+6. **ends**.
 
 It does not automatically merge, deploy, or continue into another development stage.
