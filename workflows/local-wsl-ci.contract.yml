@@ -32,6 +32,7 @@ qualification:
 receipt:
   destination: matching_pull_request_comment
   exact_sha_required: true
+  post_after_cleanup_verified: true
   include:
     - qualification_summary
     - command_results
@@ -59,8 +60,9 @@ cleanup:
 
 end_condition:
   after:
-    - qualification_receipt_posted
+    - qualification_evidence_captured
     - cleanup_verified
+    - qualification_receipt_posted
   terminate_ci_cd: true
   continue_to_review: false
   merge: false
