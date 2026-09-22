@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: acrinym-pr-review --repo owner/name --pr NUMBER
+
+Applies the acrinym account-level post-PR review rule:
+- public repo: normal OpenHands + CodeRabbit GitHub integrations may run
+- non-public repo: post "@openhands, please review PR." automatically
+EOF
+}
+
+REPO=""
+PR=""
+while (($#)); do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --repo) REPO="${2:-}"; shift 2 ;;
+    --pr) PR="${2:-}"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+[[ -n "$REPO" && -n "$PR" ]] || { usage >&2; exit 2; }
+
+VISIBILITY="$(gh repo view "$REPO" --json visibility --jq .visibility)"
+if [[ "$VISIBILITY" == "PUBLIC" ]]; then
+  echo "Public repository: OpenHands and CodeRabbit may run through normal GitHub integrations."
+  exit 0
+fi
+
+BODY='@openhands, please review PR.'
+EXISTING="$(gh pr view "$PR" --repo "$REPO" --json comments --jq '.comments[].body' | grep -Fx "$BODY" || true)"
+if [[ -z "$EXISTING" ]]; then
+  gh pr comment "$PR" --repo "$REPO" --body "$BODY" >/dev/null
+  echo "Posted OpenHands review trigger on $REPO PR #$PR"
+else
+  echo "OpenHands review trigger already present on $REPO PR #$PR"
+fi
