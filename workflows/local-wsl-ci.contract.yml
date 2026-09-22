@@ -1,0 +1,89 @@
+version: 1
+id: acrinym-local-wsl-cicd
+scope:
+  owner: acrinym
+  default_for_owned_repositories: true
+
+authority:
+  contract_location: github
+  repository: acrinym/.github
+
+execution:
+  location: local
+  platform: wsl2
+  distro: Acrinym-Dev
+  github_hosted_actions_authoritative: false
+  worktree_allowed: false
+
+staging:
+  disposable_linux_native: true
+  exact_head_required: true
+
+qualification:
+  provision_declared_dependencies: true
+  hte:
+    when_applicable: true
+    depth: 5
+    execute: true
+  gui:
+    use_virtual_display_when_required: true
+    skip_due_to_headless: false
+
+receipt:
+  destination: matching_pull_request_comment
+  exact_sha_required: true
+  include:
+    - qualification_summary
+    - command_results
+    - required_failures
+    - optional_failures
+    - environment_blockers
+    - head_stability
+    - dirty_state_stability
+    - cleanup_receipt
+
+cleanup:
+  required: true
+  remove_run_scoped:
+    - disposable_staging
+    - virtual_environment
+    - qualification_outputs
+    - build_test_artifacts
+    - python_test_caches
+    - temporary_scripts
+    - temporary_logs
+  preserve:
+    - reusable_user_toolchains
+    - intentional_shared_caches
+  verify_after_cleanup: true
+
+end_condition:
+  after:
+    - qualification_receipt_posted
+    - cleanup_verified
+  terminate_ci_cd: true
+  continue_to_review: false
+  merge: false
+  deploy: false
+
+post_pr_review:
+  separate_from_ci_cd: true
+  trigger_after_pr_exists: true
+  public_repository:
+    openhands: allow_normal_github_integration
+    coderabbit: allow_normal_github_integration
+  non_public_repository:
+    openhands:
+      trigger: pull_request_comment
+      body: "@openhands, please review PR."
+      automatic: true
+    coderabbit: no_required_automatic_trigger
+  review_authorizes_merge: false
+
+failure_classification:
+  distinguish:
+    - product_code_failure
+    - declared_dependency_not_provisioned
+    - headless_display_requirement
+    - ci_infrastructure_failure
+    - external_github_or_account_failure
