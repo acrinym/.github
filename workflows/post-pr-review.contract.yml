@@ -1,0 +1,23 @@
+version: 1
+id: acrinym-post-pr-review
+scope:
+  owner: acrinym
+trigger:
+  event: pull_request_created
+public_repository:
+  openhands: normal_github_integration
+  coderabbit: normal_github_integration
+non_public_repository:
+  openhands:
+    action: add_pull_request_comment
+    body: "@openhands, please review PR."
+    automatic: true
+    deduplicate_exact_comment: true
+  coderabbit:
+    required_manual_trigger: false
+merge:
+  automatic: false
+  requires_explicit_user_authorization: true
+relationship_to_ci_cd:
+  separate_workflow: true
+  local_ci_cd_does_not_continue_into_review: true
